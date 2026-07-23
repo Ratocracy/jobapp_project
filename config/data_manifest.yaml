@@ -1,0 +1,31 @@
+version: 1
+source:
+  provider: aws_s3
+  bucket: s3ds5110jobspark
+  region: us-east-2
+  access: public
+
+datasets:
+  linkedin_job_postings:
+    remote_key: linkedin_job_postings.parquet
+    local_name: linkedin_job_postings.parquet
+    size_bytes: 110313350
+    sha256: 7dd427cfdea4d968c57e2f20c154754a27e05fa2187e2e52af022692058bef3c
+
+  job_summary:
+    remote_key: job_summary.parquet
+    local_name: job_summary.parquet
+    size_bytes: 2704037940
+    sha256: 5d9d00dd525f5bb45545acd83d10f4d42aebaa46164754572b90a5bfc4afd90a
+
+  job_skills:
+    remote_key: job_skills.parquet
+    local_name: job_skills.parquet
+    size_bytes: 322110167
+    sha256: a5bf10bb34233b4e360021073bb262ed6d5047a0a46c395e5950c627e1c7b283
+
+  resume_screening:
+    remote_key: resume_screening.parquet
+    local_name: resume_screening_train.parquet
+    size_bytes: 12691786
+    sha256: df4ffd5b3d5f1cfaa4df615fc15b6d72682319ee6aee8a576b4151bdee325a75

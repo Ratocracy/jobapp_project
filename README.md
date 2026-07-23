@@ -177,6 +177,38 @@ $env:hadoop_home_dir = "C:\hadoop"
 The current configuration uses a deterministic 1% job sample and limits query
 evaluation to 100 resumes.
 
+First, download and checksum-verify the four source Parquets from the public S3
+bucket. No AWS account or credentials are required:
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) "src")
+python -m jobapps.download_data
+```
+
+Files are downloaded to `raw_data/` through temporary `.part` files. Existing
+valid files are skipped. Existing files that fail verification are preserved
+unless `--force` is explicitly supplied.
+
+To verify an existing local copy without contacting S3:
+
+```powershell
+python -m jobapps.download_data --verify-only
+```
+
+Individual datasets can be requested by repeating `--dataset`:
+
+```powershell
+python -m jobapps.download_data `
+  --dataset linkedin_job_postings `
+  --dataset job_summary
+```
+
+The expected object names, byte sizes, and SHA-256 checksums are versioned in
+`config/data_manifest.yaml`. A private mirror can still be accessed with
+`--profile PROFILE_NAME` or `--use-default-chain`.
+
+After the source files are present, run the MVP:
+
 ```powershell
 $env:PYTHONPATH = (Join-Path (Get-Location) "src")
 python -m jobapps.pipelines.mvp_pipeline `
@@ -191,7 +223,7 @@ $env:PYTHONPATH = (Join-Path (Get-Location) "src")
 python -m pytest tests -q
 ```
 
-Current verification result: 16 tests passed.
+Current verification result: 20 tests passed.
 
 ## Limitations
 
