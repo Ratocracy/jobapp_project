@@ -7,6 +7,43 @@ given a resume, it retrieves and ranks similar jobs from a LinkedIn job catalog.
 The system is decision support and must not be used to make autonomous hiring
 decisions.
 
+## Quick start
+
+The commands below use Anaconda and Windows PowerShell. The public source-data
+download is approximately 3.1 GB and does not require an AWS account.
+
+```powershell
+git clone https://github.com/Ratocracy/jobapp_project.git
+cd jobapp_project
+
+conda env create -f environment.yml
+conda activate ds5110
+
+$env:PYTHONPATH = (Join-Path (Get-Location) "src")
+python -m jobapps.download_data
+```
+
+Verify the installation:
+
+```powershell
+python -m pytest tests -q
+```
+
+Run the configured 1% jobs/100-resume MVP:
+
+```powershell
+# Update this path if Hadoop is installed elsewhere.
+$env:HADOOP_HOME = "C:\hadoop"
+$env:hadoop_home_dir = "C:\hadoop"
+
+python -m jobapps.pipelines.mvp_pipeline `
+  --config config/local.yaml `
+  --quality-config config/data_quality.yaml
+```
+
+Generated silver/gold tables are written under `data/`. Source and generated
+datasets are intentionally excluded from Git.
+
 ## Current status
 
 The Week 1-3 MVP is implemented and runs end to end:
