@@ -1,0 +1,21 @@
+name: ds5110
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - openjdk=17
+  - pyspark=3.5.6
+  - pandas
+  - pyarrow
+  - boto3
+  - s3fs
+  - jupyterlab
+  - ipykernel
+  - pyyaml
+  - numpy
+  - matplotlib
+  - pytest
+  - pip

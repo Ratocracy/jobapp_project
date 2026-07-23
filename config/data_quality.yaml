@@ -1,0 +1,126 @@
+version: 1
+
+# Rules in this file describe source-data expectations. Error rules should stop
+# a pipeline run. Warning rules should be reported but should not remove rows.
+datasets:
+  linkedin_job_postings:
+    primary_key:
+      columns: [job_link]
+      severity: error
+    required_columns:
+      - job_link
+      - last_processed_time
+      - got_summary
+      - got_ner
+      - is_being_worked
+      - job_title
+      - company
+      - job_location
+      - first_seen
+      - search_city
+      - search_country
+      - search_position
+      - job_level
+      - job_type
+    non_null_columns:
+      columns: [job_link]
+      severity: error
+    allowed_values:
+      got_summary:
+        values: [t, f]
+        severity: error
+      got_ner:
+        values: [t, f]
+        severity: error
+      is_being_worked:
+        values: [t, f]
+        severity: error
+      job_level:
+        values: [Associate, Mid senior]
+        severity: warning
+      job_type:
+        values: [Onsite, Hybrid, Remote]
+        severity: warning
+
+  job_summary:
+    primary_key:
+      columns: [job_link]
+      severity: error
+    required_columns: [job_link, job_summary]
+    non_null_columns:
+      columns: [job_link]
+      severity: error
+    text_length:
+      job_summary:
+        min: 1
+        severity: warning
+
+  job_skills:
+    primary_key:
+      columns: [job_link]
+      severity: error
+    required_columns: [job_link, job_skills]
+    non_null_columns:
+      columns: [job_link]
+      severity: error
+    parsed_list_size:
+      job_skills:
+        delimiter: ","
+        min: 1
+        max_warning: 100
+        severity: warning
+
+  resume_screening:
+    required_columns:
+      - Role
+      - Resume
+      - Decision
+      - Reason_for_decision
+      - Job_Description
+    non_null_columns:
+      columns: [Role, Resume, Decision, Job_Description]
+      severity: error
+    allowed_values:
+      Decision:
+        values: [select, reject]
+        severity: error
+    text_length:
+      Resume:
+        min: 1
+        severity: error
+      Job_Description:
+        min: 1
+        severity: error
+
+relationships:
+  job_summary_to_postings:
+    child_dataset: job_summary
+    child_key: job_link
+    parent_dataset: linkedin_job_postings
+    parent_key: job_link
+    minimum_parent_match_rate: 1.0
+    severity: error
+  job_skills_to_postings:
+    child_dataset: job_skills
+    child_key: job_link
+    parent_dataset: linkedin_job_postings
+    parent_key: job_link
+    minimum_parent_match_rate: 1.0
+    severity: error
+
+coverage:
+  postings_with_summary:
+    minimum_rate: 0.95
+    severity: warning
+  postings_with_skills:
+    minimum_rate: 0.95
+    severity: warning
+
+resume_splits:
+  group_column: Job_Description
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+  random_seed: 5110
+  require_disjoint_groups: true
