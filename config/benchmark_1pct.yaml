@@ -9,13 +9,13 @@ output:
 
 runtime:
   sample_mode: true
-  sample_fraction: 0.05
+  sample_fraction: 0.01
   random_seed: 5110
   spark_master: local[2]
   driver_memory: 8g
   shuffle_partitions: 16
   output_partitions: 4
-  resume_query_limit: 200
+  resume_query_limit: 100
 
 nlp:
   num_features: 262144

@@ -260,7 +260,7 @@ $env:PYTHONPATH = (Join-Path (Get-Location) "src")
 python -m pytest tests -q
 ```
 
-Current verification result: 20 tests passed.
+Current verification result: 24 tests passed.
 
 ## Limitations
 
@@ -279,9 +279,8 @@ Current verification result: 20 tests passed.
 ## Next steps
 
 1. Review recommendations manually and create a small relevance judgment set.
-2. Tune LSH bucket length, hash-table count, and distance threshold for recall,
-   candidate volume, and latency.
-3. Benchmark the same pipeline at 0.1%, 1%, 10%, and full-catalog scales.
+2. Validate the selected retrieval settings at 5%, 10%, and full-catalog scales.
+3. Benchmark exact and approximate retrieval latency at each catalog scale.
 4. Add explicit title similarity and resume/job skill-overlap features.
 5. Compare the TF-IDF baseline with pretrained transformer embeddings for
    semantic retrieval.
@@ -291,3 +290,83 @@ Current verification result: 20 tests passed.
 
 The strongest immediate modeling step is pretrained transformer embeddings,
 compared against this TF-IDF baseline using the same queries and relevance set.
+
+## Retrieval tuning
+
+We measured LSH recall against exhaustive cosine retrieval before changing the
+text representation. The controlled benchmark uses a deterministic 1% catalog
+(13,634 jobs), the same 100 resume queries, normalized TF-IDF vectors, and
+top-10 retrieval. Exact sparse matrix multiplication evaluates all 1,363,400
+resume-job pairs without converting the 262,144-position vectors to dense Spark
+arrays.
+
+The original LSH settings recovered only 51.8% of the exact top-10 results:
+
+| Bucket length | Hash tables | Distance threshold | Candidates | Coverage | Recall@10 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.8 | 3 | 1.2 | 746 | 89/100 | 51.8% |
+
+We then evaluated 60 combinations:
+
+```text
+bucket_length      = [0.5, 0.8, 1.0, 1.2, 1.5]
+num_hash_tables    = [3, 5, 8, 12]
+distance_threshold = [1.2, 1.3, 1.4]
+```
+
+For each bucket/hash model, candidates were generated once at threshold 1.4;
+the 1.2 and 1.3 results were evaluated as nested distance subsets. Reported
+per-configuration runtime therefore includes model fitting and generation at
+1.4 and should not be interpreted as standalone latency for the lower
+thresholds.
+
+Key results:
+
+| Operating point | Bucket | Hashes | Threshold | Candidates | Coverage | Recall@10 | Runtime |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original | 0.8 | 3 | 1.2 | 746 | 89/100 | 51.8% | 79.6 s |
+| Practical | 0.5 | 3 | 1.3 | 4,885 | 97/100 | 92.4% | 70.2 s |
+| Strict target | 0.5 | 3 | 1.4 | 349,324 | 100/100 | 95.4% | 70.6 s |
+| Maximum recall | 0.8 | 8 | 1.4 | 390,874 | 100/100 | 100.0% | 103.5 s |
+
+```text
+Recall
+100 |                           ●
+ 95 |                      ●
+ 90 |                 ●
+ 85 |
+ 80 |
+ 70 |
+ 60 |      ●
+ 50 | ●
+    +-----------------------------
+      700   5k    50k    400k
+          Candidate pairs
+```
+
+At threshold 1.3, increasing from 3 to 8 hash tables improved recall from
+92.4% to 96.6% but did not improve 97/100 query coverage. The remaining three
+queries had no candidates within the distance threshold, so additional hash
+tables could not recover them. Raising the threshold to 1.4 achieved complete
+coverage but increased the candidate set from thousands to hundreds of
+thousands.
+
+Bucket length produced no measurable candidate-count or recall difference in
+this grid. Runtime differences across bucket lengths are therefore treated as
+execution noise rather than evidence for one value.
+
+Exact sparse cosine took 6.1 seconds at 1% and was faster than every LSH grid
+configuration at this scale. The practical next design is threshold 1.3 with a
+fallback for uncovered queries, followed by validation at larger catalog sizes
+where approximate retrieval may provide a runtime benefit.
+
+Run the exact baseline and tuning grid with:
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location) "src")
+python -m jobapps.pipelines.retrieval_benchmark
+python -m jobapps.pipelines.retrieval_tuning
+```
+
+Machine-readable results are written to ignored paths under
+`data/gold/benchmarks/`.

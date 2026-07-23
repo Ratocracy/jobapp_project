@@ -16,6 +16,7 @@ dependencies:
   - ipykernel
   - pyyaml
   - numpy
+  - scipy
   - matplotlib
   - pytest
   - pip

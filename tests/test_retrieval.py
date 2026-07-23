@@ -1,3 +1,5 @@
+import pytest
+
 from jobapps.features import fit_tfidf_pipeline, transform_documents
 from jobapps.retrieval import fit_lsh_index, generate_candidates, rerank_top_k
 
@@ -26,3 +28,20 @@ def test_tfidf_lsh_returns_matching_job_first(spark) -> None:
     assert result.job_link == "job-1"
     assert result.rank == 1
     assert result.similarity_score > 0.5
+
+
+def test_rerank_converts_normalized_euclidean_distance_to_cosine(spark) -> None:
+    candidates = spark.createDataFrame(
+        [
+            ("resume-1", "job-1", None, None, 0.0),
+            ("resume-1", "job-2", None, None, 1.0),
+        ],
+        "resume_id string, job_link string, resume_features string, "
+        "job_features string, approx_distance double",
+    )
+
+    results = rerank_top_k(candidates, top_k=2).collect()
+
+    assert [row.job_link for row in results] == ["job-1", "job-2"]
+    assert results[0].similarity_score == pytest.approx(1.0)
+    assert results[1].similarity_score == pytest.approx(0.5)

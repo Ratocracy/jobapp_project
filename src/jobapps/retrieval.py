@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pyspark.ml.feature import BucketedRandomProjectionLSH, BucketedRandomProjectionLSHModel
-from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, Window, functions as F
 
 from jobapps.validation import require_columns
@@ -54,23 +53,22 @@ def generate_candidates(
 
 
 def rerank_top_k(candidates: DataFrame, top_k: int) -> DataFrame:
-    """Compute exact cosine scores on normalized vectors and retain top K."""
+    """Convert normalized-vector distance to cosine similarity and retain top K."""
 
     require_columns(
         candidates,
         ["resume_id", "job_link", "resume_features", "job_features", "approx_distance"],
     )
-    scored = (
-        candidates
-        .withColumn("resume_array", vector_to_array("resume_features"))
-        .withColumn("job_array", vector_to_array("job_features"))
-        .withColumn(
-            "similarity_score",
-            F.expr(
-                "aggregate(zip_with(resume_array, job_array, (x, y) -> x * y), "
-                "cast(0.0 as double), (acc, value) -> acc + value)"
+    scored = candidates.withColumn(
+        "similarity_score",
+        F.greatest(
+            F.lit(-1.0),
+            F.least(
+                F.lit(1.0),
+                F.lit(1.0)
+                - (F.pow(F.col("approx_distance"), F.lit(2.0)) / F.lit(2.0)),
             ),
-        )
+        ),
     )
     order = Window.partitionBy("resume_id").orderBy(
         F.desc("similarity_score"), F.asc("approx_distance"), F.asc("job_link")
