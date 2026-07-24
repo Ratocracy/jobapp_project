@@ -49,12 +49,22 @@ class RetrievalConfig:
 
 
 @dataclass(frozen=True)
+class TransformerConfig:
+    model_name: str
+    batch_size: int
+    max_tokens: int
+    overlap_tokens: int
+    device: str
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     input: InputConfig
     output: OutputConfig
     runtime: RuntimeConfig
     nlp: NlpConfig
     retrieval: RetrievalConfig
+    transformer: TransformerConfig
     project_root: Path
 
 
@@ -86,6 +96,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         runtime_data = data["runtime"]
         nlp_data = data.get("nlp", {})
         retrieval_data = data.get("retrieval", {})
+        transformer_data = data.get("transformer", {})
         sample_fraction = float(runtime_data["sample_fraction"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Invalid pipeline configuration: {config_path}") from exc
@@ -112,6 +123,22 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         raise ValueError("NLP and retrieval integer settings must be at least 1")
     if bucket_length <= 0 or distance_threshold <= 0:
         raise ValueError("LSH bucket length and distance threshold must be positive")
+
+    model_name = str(
+        transformer_data.get(
+            "model_name", "sentence-transformers/all-MiniLM-L6-v2"
+        )
+    ).strip()
+    batch_size = int(transformer_data.get("batch_size", 32))
+    max_tokens = int(transformer_data.get("max_tokens", 256))
+    overlap_tokens = int(transformer_data.get("overlap_tokens", 32))
+    device = str(transformer_data.get("device", "cpu")).strip()
+    if not model_name or not device:
+        raise ValueError("Transformer model name and device cannot be empty")
+    if batch_size < 1 or max_tokens < 8:
+        raise ValueError("Transformer batch_size must be positive and max_tokens at least 8")
+    if overlap_tokens < 0 or overlap_tokens >= max_tokens:
+        raise ValueError("Transformer overlap_tokens must be in [0, max_tokens)")
 
     return PipelineConfig(
         input=InputConfig(raw_dir=_resolve(project_root, input_data["raw_dir"])),
@@ -140,6 +167,13 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             num_hash_tables=num_hash_tables,
             distance_threshold=distance_threshold,
             top_k=top_k,
+        ),
+        transformer=TransformerConfig(
+            model_name=model_name,
+            batch_size=batch_size,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            device=device,
         ),
         project_root=project_root,
     )

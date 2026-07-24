@@ -260,7 +260,7 @@ $env:PYTHONPATH = (Join-Path (Get-Location) "src")
 python -m pytest tests -q
 ```
 
-Current verification result: 24 tests passed.
+Current verification result: 28 tests passed.
 
 ## Limitations
 
@@ -370,3 +370,68 @@ python -m jobapps.pipelines.retrieval_tuning
 
 Machine-readable results are written to ignored paths under
 `data/gold/benchmarks/`.
+
+## Transformer benchmark
+
+The transformer implementation is a parallel gold-feature experiment; it does
+not replace the silver ETL or the TF-IDF baseline. It uses the same
+deterministic 1% job catalog and 100 resume queries so the two representations
+can be compared without LSH approximation.
+
+```text
+shared combined_text
+        |
+        +--> TF-IDF -------------> exact sparse cosine top-10
+        |
+        `--> overlapping chunks
+                  |
+                  v
+          all-MiniLM-L6-v2
+                  |
+                  v
+          mean-pooled, normalized
+          384-dimensional embedding
+                  |
+                  v
+          exact dense cosine top-10
+```
+
+Long documents are split using the model tokenizer into overlapping 240-token
+chunks with a 32-token overlap. Each chunk is encoded and normalized. Chunk
+vectors are mean-pooled and normalized again to create one vector per job or
+resume. This avoids silently using only the beginning of long descriptions.
+
+Generated embeddings are cached under:
+
+- `data/gold/benchmarks/transformer_1pct/job_embeddings`
+- `data/gold/benchmarks/transformer_1pct/resume_embeddings`
+
+The benchmark also writes transformer and TF-IDF top-10 tables plus
+`metrics.json`. These generated files and downloaded model weights are not
+tracked by Git.
+
+Install or update the declared environment before the first run:
+
+```powershell
+conda env update -f environment.yml --prune
+conda activate ds5110
+$env:PYTHONPATH = (Join-Path (Get-Location) "src")
+```
+
+Run the controlled comparison:
+
+```powershell
+python -m jobapps.pipelines.transformer_benchmark `
+  --config config/transformer_1pct.yaml `
+  --quality-config config/data_quality.yaml
+```
+
+The first execution downloads
+`sentence-transformers/all-MiniLM-L6-v2` and creates the cached embeddings.
+Later executions reuse a cache only when its row counts and model name match
+the configuration. Use `--force-recompute` after changing chunking logic or
+when a fresh embedding run is required.
+
+Top-K overlap measures how differently TF-IDF and the transformer retrieve; it
+does not determine which system is better. Choosing between them still requires
+manual relevance judgments or a defensible labeled resume-job dataset.
