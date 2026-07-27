@@ -34,7 +34,6 @@ def load_sentence_transformer(model_name: str, device: str) -> Any:
         ) from exc
     return SentenceTransformer(model_name, device=device)
 
-
 def chunk_text(
     text: str,
     tokenizer: Any,
@@ -71,6 +70,7 @@ def embed_document_rows(
     max_tokens: int,
     overlap_tokens: int,
     text_contract_version: str = "combined_text_v1",
+    show_progress_bar: bool = False,
 ) -> list[EmbeddedDocument]:
     """Encode document rows and mean-pool their normalized chunk embeddings."""
 
@@ -96,7 +96,7 @@ def embed_document_rows(
             batch_size=batch_size,
             convert_to_numpy=True,
             normalize_embeddings=True,
-            show_progress_bar=True,
+            show_progress_bar=show_progress_bar,
         ),
         dtype=np.float32,
     )
@@ -133,12 +133,16 @@ def embed_documents(
     max_tokens: int,
     overlap_tokens: int,
 ) -> DataFrame:
-    """Collect a controlled sample, encode it locally, and return a Spark table."""
+    """Collect the controlled sample, encode with PyTorch, and return a Spark table."""
 
     require_document_contract(documents)
-    rows = documents.select(
-        "document_id", "document_type", "source_id", "combined_text"
-    ).orderBy("document_id").collect()
+    rows = (
+        documents.select(
+            "document_id", "document_type", "source_id", "combined_text"
+        )
+        .orderBy("document_id")
+        .collect()
+    )
     embedded = embed_document_rows(
         rows,
         model=model,
@@ -146,6 +150,7 @@ def embed_documents(
         batch_size=batch_size,
         max_tokens=max_tokens,
         overlap_tokens=overlap_tokens,
+        show_progress_bar=True,
     )
     return spark.createDataFrame(
         [

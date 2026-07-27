@@ -61,5 +61,25 @@ def build_resume_documents(silver_resumes: DataFrame) -> DataFrame:
     )
 
 
+def select_resume_queries(
+    silver_resumes: DataFrame,
+    split: str,
+    limit: int,
+) -> DataFrame:
+    """Select deterministic resume queries from one leakage-safe split."""
+
+    require_columns(silver_resumes, ["resume_id", "split"])
+    if split not in {"train", "validation", "test", "all"}:
+        raise ValueError("split must be train, validation, test, or all")
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    selected = (
+        silver_resumes
+        if split == "all"
+        else silver_resumes.filter(F.col("split") == split)
+    )
+    return selected.orderBy(F.col("resume_id")).limit(limit)
+
+
 def require_document_contract(documents: DataFrame) -> None:
     require_columns(documents, DOCUMENT_COLUMNS)

@@ -11,7 +11,11 @@ from time import perf_counter
 from pyspark.sql import DataFrame, functions as F
 
 from jobapps.config import PipelineConfig, load_pipeline_config
-from jobapps.documents import build_job_documents, build_resume_documents
+from jobapps.documents import (
+    build_job_documents,
+    build_resume_documents,
+    select_resume_queries,
+)
 from jobapps.features import fit_tfidf_pipeline, transform_documents
 from jobapps.pipelines.jobs_pipeline import create_spark_session, run_jobs_pipeline
 from jobapps.pipelines.resumes_pipeline import run_resumes_pipeline
@@ -41,6 +45,7 @@ def _write_frame(frame: DataFrame, path: Path, partitions: int) -> None:
 
 def _cached_embeddings_are_valid(
     frame: DataFrame,
+    documents: DataFrame,
     expected_count: int,
     expected_model: str,
 ) -> bool:
@@ -49,10 +54,22 @@ def _cached_embeddings_are_valid(
         F.countDistinct("embedding_model").alias("models"),
         F.first("embedding_model").alias("model"),
     ).first()
-    return (
+    metadata_valid = (
         int(row["rows"]) == expected_count
         and int(row["models"]) == 1
         and row["model"] == expected_model
+    )
+    if not metadata_valid:
+        return False
+    cached_ids = frame.select("source_id").distinct()
+    expected_ids = documents.select("source_id").distinct()
+    return (
+        cached_ids.join(expected_ids, on="source_id", how="left_anti").limit(1).count()
+        == 0
+        and expected_ids.join(cached_ids, on="source_id", how="left_anti")
+        .limit(1)
+        .count()
+        == 0
     )
 
 
@@ -73,9 +90,12 @@ def _create_embeddings(
         cached_jobs = spark.read.parquet(str(job_path))
         cached_resumes = spark.read.parquet(str(resume_path))
         if _cached_embeddings_are_valid(
-            cached_jobs, job_count, config.transformer.model_name
+            cached_jobs, job_documents, job_count, config.transformer.model_name
         ) and _cached_embeddings_are_valid(
-            cached_resumes, resume_count, config.transformer.model_name
+            cached_resumes,
+            resume_documents,
+            resume_count,
+            config.transformer.model_name,
         ):
             return cached_jobs, cached_resumes, 0.0, 0.0
 
@@ -136,7 +156,11 @@ def run_transformer_benchmark(
 
     spark = create_spark_session(config)
     started = perf_counter()
-    output_dir = config.output.gold_dir / "benchmarks" / "transformer_1pct"
+    output_dir = (
+        config.output.gold_dir
+        / "benchmarks"
+        / f"transformer_1pct_{config.runtime.resume_query_split}"
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
         silver_jobs, _, _ = run_jobs_pipeline(
@@ -146,12 +170,13 @@ def run_transformer_benchmark(
             spark, config, quality_path, write_output=False
         )
         job_documents = build_job_documents(silver_jobs).cache()
-        resume_documents = (
-            build_resume_documents(silver_resumes)
-            .orderBy("document_id")
-            .limit(config.runtime.resume_query_limit)
-            .cache()
-        )
+        resume_documents = build_resume_documents(
+            select_resume_queries(
+                silver_resumes,
+                config.runtime.resume_query_split,
+                config.runtime.resume_query_limit,
+            )
+        ).cache()
         job_count = job_documents.count()
         resume_count = resume_documents.count()
 
@@ -237,6 +262,8 @@ def run_transformer_benchmark(
                     "max_tokens": config.transformer.max_tokens,
                     "overlap_tokens": config.transformer.overlap_tokens,
                     "device": config.transformer.device,
+                    "embedding_execution": "driver_pytorch",
+                    "resume_query_split": config.runtime.resume_query_split,
                     "sample_fraction": config.runtime.sample_fraction,
                     "top_k": config.retrieval.top_k,
                 },

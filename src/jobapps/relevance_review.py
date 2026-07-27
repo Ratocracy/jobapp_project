@@ -55,17 +55,22 @@ def select_diverse_resumes(
 
 def build_blinded_packet(
     tfidf_rows: Iterable[Any],
+    ngram_rows: Iterable[Any],
     transformer_rows: Iterable[Any],
     resume_metadata: dict[str, dict[str, str]],
     job_metadata: dict[str, dict[str, str]],
     resume_count: int,
     seed: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Pool two top-K systems and return reviewer rows plus a hidden answer key."""
+    """Pool three top-K systems and return reviewer rows plus a hidden answer key."""
 
     pooled: dict[tuple[str, str], dict[str, Any]] = {}
     available_resume_ids: set[str] = set()
-    for system, rows in (("tfidf", tfidf_rows), ("transformer", transformer_rows)):
+    for system, rows in (
+        ("tfidf", tfidf_rows),
+        ("ngram", ngram_rows),
+        ("transformer", transformer_rows),
+    ):
         for row in rows:
             resume_id = row["resume_id"]
             job_link = row["job_link"]
@@ -125,6 +130,9 @@ def build_blinded_packet(
                     "in_tfidf": "tfidf_rank" in provenance,
                     "tfidf_rank": provenance.get("tfidf_rank", ""),
                     "tfidf_score": provenance.get("tfidf_score", ""),
+                    "in_ngram": "ngram_rank" in provenance,
+                    "ngram_rank": provenance.get("ngram_rank", ""),
+                    "ngram_score": provenance.get("ngram_score", ""),
                     "in_transformer": "transformer_rank" in provenance,
                     "transformer_rank": provenance.get("transformer_rank", ""),
                     "transformer_score": provenance.get("transformer_score", ""),

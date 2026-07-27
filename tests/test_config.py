@@ -13,6 +13,7 @@ def test_load_pipeline_config_resolves_project_paths() -> None:
     assert config.output.silver_dir == config.project_root / "data" / "silver"
     assert config.runtime.sample_mode is True
     assert config.runtime.random_seed == 5110
+    assert config.runtime.resume_query_split == "validation"
 
 
 def test_invalid_sample_fraction_is_rejected(tmp_path: Path) -> None:

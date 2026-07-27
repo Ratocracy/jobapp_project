@@ -16,6 +16,7 @@ runtime:
   shuffle_partitions: 16
   output_partitions: 4
   resume_query_limit: 100
+  resume_query_split: validation
 
 nlp:
   num_features: 262144

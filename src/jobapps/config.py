@@ -28,14 +28,22 @@ class RuntimeConfig:
     sample_fraction: float
     random_seed: int
     spark_master: str
+    spark_task_cpus: int
     driver_memory: str
     shuffle_partitions: int
     output_partitions: int
     resume_query_limit: int
+    resume_query_split: str
 
 
 @dataclass(frozen=True)
 class NlpConfig:
+    num_features: int
+    min_document_frequency: int
+
+
+@dataclass(frozen=True)
+class NgramConfig:
     num_features: int
     min_document_frequency: int
 
@@ -55,6 +63,7 @@ class TransformerConfig:
     max_tokens: int
     overlap_tokens: int
     device: str
+    partitions: int
 
 
 @dataclass(frozen=True)
@@ -63,6 +72,7 @@ class PipelineConfig:
     output: OutputConfig
     runtime: RuntimeConfig
     nlp: NlpConfig
+    ngram: NgramConfig
     retrieval: RetrievalConfig
     transformer: TransformerConfig
     project_root: Path
@@ -95,6 +105,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         output_data = data["output"]
         runtime_data = data["runtime"]
         nlp_data = data.get("nlp", {})
+        ngram_data = data.get("ngram", {})
         retrieval_data = data.get("retrieval", {})
         transformer_data = data.get("transformer", {})
         sample_fraction = float(runtime_data["sample_fraction"])
@@ -105,21 +116,42 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         raise ValueError("runtime.sample_fraction must be greater than 0 and at most 1")
     output_partitions = int(runtime_data.get("output_partitions", 4))
     shuffle_partitions = int(runtime_data.get("shuffle_partitions", 16))
+    spark_task_cpus = int(runtime_data.get("spark_task_cpus", 1))
     if output_partitions < 1:
         raise ValueError("runtime.output_partitions must be at least 1")
     if shuffle_partitions < 1:
         raise ValueError("runtime.shuffle_partitions must be at least 1")
+    if spark_task_cpus < 1:
+        raise ValueError("runtime.spark_task_cpus must be at least 1")
     resume_query_limit = int(runtime_data.get("resume_query_limit", 100))
     if resume_query_limit < 1:
         raise ValueError("runtime.resume_query_limit must be at least 1")
+    resume_query_split = str(
+        runtime_data.get("resume_query_split", "validation")
+    ).strip().lower()
+    if resume_query_split not in {"train", "validation", "test", "all"}:
+        raise ValueError(
+            "runtime.resume_query_split must be train, validation, test, or all"
+        )
 
     num_features = int(nlp_data.get("num_features", 262_144))
     min_document_frequency = int(nlp_data.get("min_document_frequency", 2))
+    ngram_num_features = int(ngram_data.get("num_features", 524_288))
+    ngram_min_document_frequency = int(
+        ngram_data.get("min_document_frequency", 2)
+    )
     bucket_length = float(retrieval_data.get("bucket_length", 0.8))
     num_hash_tables = int(retrieval_data.get("num_hash_tables", 3))
     distance_threshold = float(retrieval_data.get("distance_threshold", 1.2))
     top_k = int(retrieval_data.get("top_k", 10))
-    if min(num_features, min_document_frequency, num_hash_tables, top_k) < 1:
+    if min(
+        num_features,
+        min_document_frequency,
+        ngram_num_features,
+        ngram_min_document_frequency,
+        num_hash_tables,
+        top_k,
+    ) < 1:
         raise ValueError("NLP and retrieval integer settings must be at least 1")
     if bucket_length <= 0 or distance_threshold <= 0:
         raise ValueError("LSH bucket length and distance threshold must be positive")
@@ -133,12 +165,15 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
     max_tokens = int(transformer_data.get("max_tokens", 256))
     overlap_tokens = int(transformer_data.get("overlap_tokens", 32))
     device = str(transformer_data.get("device", "cpu")).strip()
+    transformer_partitions = int(transformer_data.get("partitions", 2))
     if not model_name or not device:
         raise ValueError("Transformer model name and device cannot be empty")
     if batch_size < 1 or max_tokens < 8:
         raise ValueError("Transformer batch_size must be positive and max_tokens at least 8")
     if overlap_tokens < 0 or overlap_tokens >= max_tokens:
         raise ValueError("Transformer overlap_tokens must be in [0, max_tokens)")
+    if transformer_partitions < 1:
+        raise ValueError("Transformer partitions must be positive")
 
     return PipelineConfig(
         input=InputConfig(raw_dir=_resolve(project_root, input_data["raw_dir"])),
@@ -153,14 +188,20 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             sample_fraction=sample_fraction,
             random_seed=int(runtime_data["random_seed"]),
             spark_master=str(runtime_data.get("spark_master", "local[2]")),
+            spark_task_cpus=spark_task_cpus,
             driver_memory=str(runtime_data.get("driver_memory", "4g")),
             shuffle_partitions=shuffle_partitions,
             output_partitions=output_partitions,
             resume_query_limit=resume_query_limit,
+            resume_query_split=resume_query_split,
         ),
         nlp=NlpConfig(
             num_features=num_features,
             min_document_frequency=min_document_frequency,
+        ),
+        ngram=NgramConfig(
+            num_features=ngram_num_features,
+            min_document_frequency=ngram_min_document_frequency,
         ),
         retrieval=RetrievalConfig(
             bucket_length=bucket_length,
@@ -174,6 +215,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             max_tokens=max_tokens,
             overlap_tokens=overlap_tokens,
             device=device,
+            partitions=transformer_partitions,
         ),
         project_root=project_root,
     )

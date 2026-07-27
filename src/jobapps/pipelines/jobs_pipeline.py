@@ -34,6 +34,7 @@ def create_spark_session(config: PipelineConfig) -> SparkSession:
         .master(config.runtime.spark_master)
         .appName("jobapps-silver-jobs")
         .config("spark.driver.memory", config.runtime.driver_memory)
+        .config("spark.task.cpus", config.runtime.spark_task_cpus)
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", config.runtime.shuffle_partitions)
         .config("spark.sql.parquet.enableVectorizedReader", "false")

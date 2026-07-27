@@ -1,7 +1,11 @@
 import numpy as np
 import pytest
 
-from jobapps.transformer_features import chunk_text, embed_document_rows
+from jobapps.transformer_features import (
+    chunk_text,
+    embed_document_rows,
+    embed_documents,
+)
 
 
 class FakeTokenizer:
@@ -72,3 +76,25 @@ def test_embed_document_rows_pools_and_normalizes_chunks() -> None:
 
     assert result.chunk_count == 2
     assert result.embedding == [pytest.approx(2**-0.5), pytest.approx(2**-0.5)]
+
+
+def test_embed_documents_returns_spark_rows(spark) -> None:
+    documents = spark.createDataFrame(
+        [("d1", "job", "j1", "python spark")],
+        ["document_id", "document_type", "source_id", "combined_text"],
+    )
+
+    result = embed_documents(
+        spark,
+        documents,
+        model=FakeModel(),
+        model_name="fake-model",
+        batch_size=2,
+        max_tokens=2,
+        overlap_tokens=0,
+    ).first()
+
+    assert result.source_id == "j1"
+    assert result.embedding_model == "fake-model"
+    assert result.chunk_count == 1
+    assert result.embedding == [pytest.approx(1.0), pytest.approx(0.0)]

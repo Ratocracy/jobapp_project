@@ -9,21 +9,25 @@ output:
 
 runtime:
   sample_mode: true
-  sample_fraction: 0.05
+  sample_fraction: 0.01
   random_seed: 5110
   spark_master: local[2]
   driver_memory: 8g
   shuffle_partitions: 16
   output_partitions: 4
-  resume_query_limit: 200
+  resume_query_limit: 100
   resume_query_split: validation
 
 nlp:
   num_features: 262144
   min_document_frequency: 2
 
+ngram:
+  num_features: 524288
+  min_document_frequency: 2
+
 retrieval:
-  bucket_length: 0.8
+  bucket_length: 0.5
   num_hash_tables: 3
-  distance_threshold: 1.2
+  distance_threshold: 1.3
   top_k: 10

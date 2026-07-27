@@ -11,7 +11,11 @@ from time import perf_counter
 from pyspark.sql import SparkSession, functions as F
 
 from jobapps.config import PipelineConfig, load_pipeline_config
-from jobapps.documents import build_job_documents, build_resume_documents
+from jobapps.documents import (
+    build_job_documents,
+    build_resume_documents,
+    select_resume_queries,
+)
 from jobapps.evaluation import (
     build_evaluation_documents,
     evaluate_labeled_pairs,
@@ -62,12 +66,13 @@ def run_mvp_pipeline(
     silver_seconds = perf_counter() - silver_started
 
     job_documents = build_job_documents(silver_jobs).cache()
-    resume_documents = (
-        build_resume_documents(silver_resumes)
-        .orderBy(F.col("document_id"))
-        .limit(config.runtime.resume_query_limit)
-        .cache()
-    )
+    resume_documents = build_resume_documents(
+        select_resume_queries(
+            silver_resumes,
+            config.runtime.resume_query_split,
+            config.runtime.resume_query_limit,
+        )
+    ).cache()
     job_count = job_documents.count()
     resume_count = resume_documents.count()
 
@@ -160,6 +165,7 @@ def run_mvp_pipeline(
         benchmark_payload = {
             **asdict(metrics),
             "sample_fraction": config.runtime.sample_fraction,
+            "resume_query_split": config.runtime.resume_query_split,
             "num_features": config.nlp.num_features,
             "distance_threshold": config.retrieval.distance_threshold,
             "top_k": config.retrieval.top_k,

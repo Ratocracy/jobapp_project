@@ -10,7 +10,11 @@ from pathlib import Path
 from time import perf_counter
 
 from jobapps.config import load_pipeline_config
-from jobapps.documents import build_job_documents, build_resume_documents
+from jobapps.documents import (
+    build_job_documents,
+    build_resume_documents,
+    select_resume_queries,
+)
 from jobapps.features import fit_tfidf_pipeline, transform_documents
 from jobapps.pipelines.jobs_pipeline import create_spark_session, run_jobs_pipeline
 from jobapps.pipelines.resumes_pipeline import run_resumes_pipeline
@@ -114,12 +118,13 @@ def run_tuning(config_path: str | Path, quality_path: str | Path) -> list[Tuning
             spark, config, quality_path, write_output=False
         )
         job_documents = build_job_documents(silver_jobs).cache()
-        resume_documents = (
-            build_resume_documents(silver_resumes)
-            .orderBy("document_id")
-            .limit(config.runtime.resume_query_limit)
-            .cache()
-        )
+        resume_documents = build_resume_documents(
+            select_resume_queries(
+                silver_resumes,
+                config.runtime.resume_query_split,
+                config.runtime.resume_query_limit,
+            )
+        ).cache()
         job_documents.count()
         resume_documents.count()
 
@@ -143,7 +148,11 @@ def run_tuning(config_path: str | Path, quality_path: str | Path) -> list[Tuning
             )
 
         results: list[TuningResult] = []
-        output_dir = config.output.gold_dir / "benchmarks" / "lsh_tuning_1pct"
+        output_dir = (
+            config.output.gold_dir
+            / "benchmarks"
+            / f"lsh_tuning_1pct_{config.runtime.resume_query_split}"
+        )
         maximum_threshold = max(DISTANCE_THRESHOLDS)
         for bucket_length in BUCKET_LENGTHS:
             for num_hash_tables in HASH_TABLE_COUNTS:

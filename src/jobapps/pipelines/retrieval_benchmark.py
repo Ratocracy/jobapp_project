@@ -9,7 +9,11 @@ from pathlib import Path
 from time import perf_counter
 
 from jobapps.config import load_pipeline_config
-from jobapps.documents import build_job_documents, build_resume_documents
+from jobapps.documents import (
+    build_job_documents,
+    build_resume_documents,
+    select_resume_queries,
+)
 from jobapps.features import fit_tfidf_pipeline, transform_documents
 from jobapps.pipelines.jobs_pipeline import create_spark_session, run_jobs_pipeline
 from jobapps.pipelines.resumes_pipeline import run_resumes_pipeline
@@ -46,12 +50,13 @@ def run_retrieval_benchmark(config_path: str | Path, quality_path: str | Path):
             spark, config, quality_path, write_output=False
         )
         job_documents = build_job_documents(silver_jobs).cache()
-        resume_documents = (
-            build_resume_documents(silver_resumes)
-            .orderBy("document_id")
-            .limit(config.runtime.resume_query_limit)
-            .cache()
-        )
+        resume_documents = build_resume_documents(
+            select_resume_queries(
+                silver_resumes,
+                config.runtime.resume_query_split,
+                config.runtime.resume_query_limit,
+            )
+        ).cache()
         job_count = job_documents.count()
         resume_count = resume_documents.count()
 
@@ -109,7 +114,11 @@ def run_retrieval_benchmark(config_path: str | Path, quality_path: str | Path):
             total_seconds=round(perf_counter() - started, 3),
         )
 
-        output_dir = config.output.gold_dir / "benchmarks" / "exact_1pct"
+        output_dir = (
+            config.output.gold_dir
+            / "benchmarks"
+            / f"exact_1pct_{config.runtime.resume_query_split}"
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         exact_results.write.mode("overwrite").parquet(
             str(output_dir / "exact_top_k")
@@ -122,6 +131,7 @@ def run_retrieval_benchmark(config_path: str | Path, quality_path: str | Path):
                 {
                     **asdict(metrics),
                     "sample_fraction": config.runtime.sample_fraction,
+                    "resume_query_split": config.runtime.resume_query_split,
                     "top_k": config.retrieval.top_k,
                     "bucket_length": config.retrieval.bucket_length,
                     "num_hash_tables": config.retrieval.num_hash_tables,

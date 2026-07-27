@@ -12,10 +12,12 @@ runtime:
   sample_fraction: 0.01
   random_seed: 5110
   spark_master: local[2]
+  spark_task_cpus: 1
   driver_memory: 8g
   shuffle_partitions: 16
   output_partitions: 4
   resume_query_limit: 100
+  resume_query_split: validation
 
 nlp:
   num_features: 262144
